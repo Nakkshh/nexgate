@@ -29,7 +29,7 @@ interface ChartPoint {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const TENANT_ID    = "11111111-1111-1111-1111-111111111111";
-const CONSUMER_URL = "http://localhost:8082";
+const CONSUMER_URL = process.env.NEXT_PUBLIC_CONSUMER_URL || "http://localhost:8082";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function toChartPoint(m: MetricPoint): ChartPoint {
