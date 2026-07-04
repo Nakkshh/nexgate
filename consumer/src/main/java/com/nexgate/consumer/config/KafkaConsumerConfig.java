@@ -1,26 +1,39 @@
 package com.nexgate.consumer.config;
 
-import com.nexgate.consumer.event.RequestLogEvent;
+import java.util.HashMap;
+import java.util.Map;
+
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
-import org.springframework.kafka.core.*;
+import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.util.backoff.FixedBackOff;
 
-import java.util.HashMap;
-import java.util.Map;
+import com.nexgate.consumer.event.RequestLogEvent;
 
 @Configuration
 public class KafkaConsumerConfig {
 
     @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
+
+    @Value("${SPRING_KAFKA_CONSUMER_PROPERTIES_SECURITY_PROTOCOL:PLAINTEXT}")
+    private String securityProtocol;
+
+    @Value("${SPRING_KAFKA_CONSUMER_PROPERTIES_SASL_MECHANISM:}")
+    private String saslMechanism;
+
+    @Value("${SPRING_KAFKA_CONSUMER_PROPERTIES_SASL_JAAS_CONFIG:}")
+    private String saslJaasConfig;
 
     @Bean
     public ConsumerFactory<String, RequestLogEvent> consumerFactory() {
@@ -35,6 +48,12 @@ public class KafkaConsumerConfig {
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, deserializer);
+
+        if (!saslJaasConfig.isBlank()) {
+            props.put("security.protocol", securityProtocol);
+            props.put("sasl.mechanism", saslMechanism);
+            props.put("sasl.jaas.config", saslJaasConfig);
+        }
 
         return new DefaultKafkaConsumerFactory<>(props, new StringDeserializer(), deserializer);
     }
@@ -53,7 +72,6 @@ public class KafkaConsumerConfig {
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory());
 
-        // 3 retries with 2s fixed backoff, then send to DLT
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(dltKafkaTemplate);
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, new FixedBackOff(2000L, 3));
         factory.setCommonErrorHandler(errorHandler);

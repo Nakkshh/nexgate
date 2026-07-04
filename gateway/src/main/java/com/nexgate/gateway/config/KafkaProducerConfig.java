@@ -1,6 +1,8 @@
 package com.nexgate.gateway.config;
 
-import com.nexgate.gateway.event.RequestLogEvent;
+import java.util.HashMap;
+import java.util.Map;
+
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,14 +13,22 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.kafka.support.serializer.JsonSerializer;
 
-import java.util.HashMap;
-import java.util.Map;
+import com.nexgate.gateway.event.RequestLogEvent;
 
 @Configuration
 public class KafkaProducerConfig {
 
     @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
+
+    @Value("${SPRING_KAFKA_PRODUCER_PROPERTIES_SECURITY_PROTOCOL:PLAINTEXT}")
+    private String securityProtocol;
+
+    @Value("${SPRING_KAFKA_PRODUCER_PROPERTIES_SASL_MECHANISM:}")
+    private String saslMechanism;
+
+    @Value("${SPRING_KAFKA_PRODUCER_PROPERTIES_SASL_JAAS_CONFIG:}")
+    private String saslJaasConfig;
 
     @Bean
     public ProducerFactory<String, RequestLogEvent> producerFactory() {
@@ -28,6 +38,13 @@ public class KafkaProducerConfig {
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
         props.put(ProducerConfig.ACKS_CONFIG, "1");
         props.put(ProducerConfig.RETRIES_CONFIG, 3);
+
+        if (!saslJaasConfig.isBlank()) {
+            props.put("security.protocol", securityProtocol);
+            props.put("sasl.mechanism", saslMechanism);
+            props.put("sasl.jaas.config", saslJaasConfig);
+        }
+
         return new DefaultKafkaProducerFactory<>(props);
     }
 
