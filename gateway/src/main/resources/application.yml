@@ -12,8 +12,8 @@ spring:
     password: ${DATABASE_PASSWORD:nexgate}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
+      maximum-pool-size: 2
+      minimum-idle: 1
       connection-timeout: 30000
       idle-timeout: 600000
       pool-name: nexgate-gateway-pool
@@ -35,9 +35,9 @@ spring:
       timeout: 2000ms
       lettuce:
         pool:
-          max-active: 10
-          max-idle: 5
-          min-idle: 1
+          max-active: 2
+          max-idle: 1
+          min-idle: 0
 
   # ── Kafka Producer ────────────────────────────────────────────
   kafka:
