@@ -130,12 +130,12 @@ ON CONFLICT DO NOTHING;
 --   echo -n "nxg_free_test_key_001" | sha256sum
 INSERT INTO api_keys (tenant_id, key_hash, key_prefix, name) VALUES
     ('11111111-1111-1111-1111-111111111111',
-     'b94f6f125c79e3a5ffaa826f584c10d52ada669e6762051b826b55776d05a15',
+     '9d83d0753204ba13e0fffa9ac7a9ee160bc7b4239a56d56b7d8e5ac3efdd3a81',
      'nxg_free', 'Acme Dev Key'),
     ('22222222-2222-2222-2222-222222222222',
-     'a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae',
+     'e17d4e2c70192b8c1c9dbe739fcd2ba55ed24959cc4b19c01cf2a436c0778736',
      'nxg_pro_', 'StartupX Prod Key'),
     ('33333333-3333-3333-3333-333333333333',
-     '2c624232cdd221771294dfbb310acbc8c1369568fedb3f6b53b7a5b7a4f6d70',
+     'c755f6f0842d3e8374dfa1f710fa5d1c704e721c5d6dc220fb1bd6d6d39b0839',
      'nxg_ent_', 'BigCorp Prod Key')
 ON CONFLICT DO NOTHING;
