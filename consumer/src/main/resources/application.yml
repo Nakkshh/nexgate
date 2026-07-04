@@ -1,0 +1,51 @@
+server:
+  port: ${SERVER_PORT:8082}
+
+spring:
+  application:
+    name: nexgate-consumer
+
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/nexgate}
+    username: ${DATABASE_USERNAME:nexgate}
+    password: ${DATABASE_PASSWORD:nexgate}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      pool-name: nexgate-consumer-pool
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: nexgate-consumer-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.nexgate.*"
+        spring.json.use.type.headers: false
+        spring.json.value.default.type: com.nexgate.consumer.event.RequestLogEvent
+    listener:
+      ack-mode: BATCH
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  level:
+    com.nexgate.consumer: INFO
+    org.springframework.kafka: WARN

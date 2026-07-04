@@ -1,0 +1,100 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: nexgate-gateway
+
+  # ── Database ─────────────────────────────────────────────────
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/nexgate}
+    username: ${DATABASE_USERNAME:nexgate}
+    password: ${DATABASE_PASSWORD:nexgate}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      pool-name: nexgate-gateway-pool
+
+  jpa:
+    hibernate:
+      ddl-auto: validate     # Schema managed by migration script, not Hibernate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  # ── Redis ─────────────────────────────────────────────────────
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 10
+          max-idle: 5
+          min-idle: 1
+
+  # ── Kafka Producer ────────────────────────────────────────────
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: 1              # Leader ack only — we prioritise low latency over durability here
+      retries: 3
+      properties:
+        spring.json.add.type.headers: false
+        linger.ms: 5       # Small batching window — reduces broker round trips
+        batch.size: 16384
+
+  # ── WebSocket ────────────────────────────────────────────────
+  websocket:
+    allowed-origins: "*"   # Tighten to your frontend URL in prod
+
+# ── Gateway Config ────────────────────────────────────────────
+nexgate:
+  mock-backend-url: ${MOCK_BACKEND_URL:http://localhost:8081}
+
+  rate-limit:
+    # Default limits (overridden per tenant from DB)
+    free-tier: 100         # requests per minute
+    pro-tier: 1000
+    enterprise-tier: 5000
+    window-seconds: 60     # Sliding window size
+
+  redis:
+    tenant-cache-ttl: 300  # Cache tenant config for 5 minutes
+
+# ── Actuator / Observability ──────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus, metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# ── Kafka Topics ──────────────────────────────────────────────
+kafka:
+  topics:
+    request-logs: request-logs
+    request-logs-dlt: request-logs-DLT
+
+# ── Logging ──────────────────────────────────────────────────
+logging:
+  level:
+    com.nexgate.gateway: INFO
+    org.springframework.kafka: WARN
+    io.lettuce: WARN
