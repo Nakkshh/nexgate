@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 interface MetricCardProps {
   label: string;
   icon: string;
-  value: string | number;
+  value: string | number | React.ReactNode;
   subtext?: React.ReactNode;
 }
 
