@@ -1,4 +1,3 @@
-// app/page.tsx  (or components/Dashboard.tsx if you prefer — just drop the default export)
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -9,7 +8,6 @@ import TrafficChart from "@/components/TrafficChart";
 import LatencyHeatmap from "@/components/LatencyHeatmap";
 import TerminalLogs, { LogEntry } from "@/components/TerminalLogs";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 interface MetricPoint {
   windowStart: string;
   reqCount: number;
@@ -27,11 +25,10 @@ interface ChartPoint {
   rateLimitHits: number;
 }
 
-// ─── Config ───────────────────────────────────────────────────────────────────
 const TENANT_ID    = "11111111-1111-1111-1111-111111111111";
 const CONSUMER_URL = process.env.NEXT_PUBLIC_CONSUMER_URL || "http://localhost:8082";
+const GATEWAY_URL  = process.env.NEXT_PUBLIC_GATEWAY_URL  || "https://nexgate-gateway-1aws.onrender.com";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function toChartPoint(m: MetricPoint): ChartPoint {
   return {
     time:          new Date(m.windowStart).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
@@ -46,34 +43,74 @@ function nowTime() {
   return new Date().toLocaleTimeString([], { hour12: false });
 }
 
-// Seed logs shown before WS connects
 const SEED_LOGS: LogEntry[] = [
-  { time: "14:55:01", level: "INFO",  message: "Proxy request accepted: GET /api/v1/users (200 OK)" },
-  { time: "14:55:04", level: "INFO",  message: "Proxy request accepted: POST /api/v1/auth/login (201 Created)" },
-  { time: "14:55:08", level: "WARN",  message: "Rate limit approaching for IP 192.168.1.1" },
-  { time: "14:55:12", level: "INFO",  message: "Proxy request accepted: GET /api/v1/assets/logo.png (200 OK)" },
+  { time: "14:55:01", level: "INFO", message: "Proxy request accepted: GET /api/v1/users (200 OK)" },
+  { time: "14:55:04", level: "INFO", message: "Proxy request accepted: POST /api/v1/auth/login (201 Created)" },
+  { time: "14:55:08", level: "WARN", message: "Rate limit approaching for IP 192.168.1.1" },
+  { time: "14:55:12", level: "INFO", message: "Proxy request accepted: GET /api/v1/assets/logo.png (200 OK)" },
 ];
 
-// ─── Component ────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const [chartData, setChartData] = useState<ChartPoint[]>([]);
   const [connected, setConnected] = useState(false);
   const [logs, setLogs]           = useState<LogEntry[]>(SEED_LOGS);
 
-  // Metric card state
-  const [requests,    setRequests]    = useState(4829);
-  const [errorRate,   setErrorRate]   = useState(0.42);
-  const [latency,     setLatency]     = useState(142);
-  const [rateLimits,  setRateLimits]  = useState(12);
+  const [requests,   setRequests]   = useState(4829);
+  const [errorRate,  setErrorRate]  = useState(0.42);
+  const [latency,    setLatency]    = useState(142);
+  const [rateLimits, setRateLimits] = useState(12);
+
+  // Demo control state
+  const [firing,        setFiring]        = useState(false);
+  const [firedCount,    setFiredCount]    = useState(0);
+  const [totalToFire,   setTotalToFire]   = useState(0);
+  const [waking,        setWaking]        = useState(false);
+  const [gatewayStatus, setGatewayStatus] = useState<"unknown" | "awake" | "sleeping">("unknown");
 
   const clientRef = useRef<Client | null>(null);
 
-  // Push a new log line (prepend so newest is first)
   const pushLog = useCallback((entry: LogEntry) => {
     setLogs((prev) => [entry, ...prev].slice(0, 40));
   }, []);
 
-  // ── History fetch ──────────────────────────────────────────────────────────
+  const wakeGateway = async () => {
+    setWaking(true);
+    setGatewayStatus("sleeping");
+    try {
+      const res = await fetch(`${GATEWAY_URL}/actuator/health`);
+      if (res.ok) {
+        setGatewayStatus("awake");
+        pushLog({ time: nowTime(), level: "INFO", message: "Gateway is awake and healthy" });
+      } else {
+        setGatewayStatus("sleeping");
+      }
+    } catch {
+      setGatewayStatus("sleeping");
+      pushLog({ time: nowTime(), level: "WARN", message: "Gateway cold start in progress — try again in 30s" });
+    }
+    setWaking(false);
+  };
+
+  const fireRequests = async (count: number) => {
+    if (gatewayStatus !== "awake") return;
+    setFiring(true);
+    setFiredCount(0);
+    setTotalToFire(count);
+    pushLog({ time: nowTime(), level: "INFO", message: `Firing ${count} requests through gateway pipeline...` });
+    for (let i = 0; i < count; i++) {
+      try {
+        await fetch(`${GATEWAY_URL}/api/todos`, {
+          headers: { "X-API-Key": "nxg_free_test_key_001" },
+          mode: "no-cors",
+        });
+      } catch {}
+      setFiredCount(i + 1);
+      await new Promise(r => setTimeout(r, 150));
+    }
+    pushLog({ time: nowTime(), level: "INFO", message: `Done — ${count} requests fired. Watch metrics update.` });
+    setFiring(false);
+  };
+
   useEffect(() => {
     fetch(`${CONSUMER_URL}/metrics/history/${TENANT_ID}?minutes=60`)
       .then((r) => r.json())
@@ -87,12 +124,9 @@ export default function DashboardPage() {
           setRateLimits(last.rateLimitHits);
         }
       })
-      .catch(() => {
-        // Backend not running yet — simulation takes over below
-      });
+      .catch(() => {});
   }, []);
 
-  // ── WebSocket ──────────────────────────────────────────────────────────────
   useEffect(() => {
     const client = new Client({
       webSocketFactory: () => new SockJS(`${CONSUMER_URL}/ws`),
@@ -102,10 +136,12 @@ export default function DashboardPage() {
         client.subscribe(`/topic/metrics/${TENANT_ID}`, (msg) => {
           const metric: MetricPoint = JSON.parse(msg.body);
           const point = toChartPoint(metric);
+          const rate = metric.reqCount > 0 ? (metric.errorCount / metric.reqCount) * 100 : 0;
 
           setRequests(metric.reqCount);
           setLatency(Math.round(metric.avgLatencyMs));
           setRateLimits(metric.rateLimitHits);
+          setErrorRate(parseFloat(rate.toFixed(2)));
 
           setChartData((prev) => {
             const idx = prev.findIndex((p) => p.time === point.time);
@@ -117,7 +153,7 @@ export default function DashboardPage() {
             return [...prev.slice(-29), point];
           });
 
-          pushLog({ time: nowTime(), level: "RECV", message: `Metric heartbeat received from worker-node-04` });
+          pushLog({ time: nowTime(), level: "RECV", message: `Metric heartbeat — ${metric.reqCount} req, ${metric.errorCount} errors` });
         });
       },
       onDisconnect: () => setConnected(false),
@@ -128,39 +164,115 @@ export default function DashboardPage() {
     return () => { client.deactivate(); };
   }, [pushLog]);
 
-  // ── Client-side simulation (runs when WS is not connected) ─────────────────
   useEffect(() => {
     if (connected) return;
-
     const id = setInterval(() => {
       setRequests((v) => v + Math.floor(Math.random() * 5));
       setLatency(140 + Math.floor(Math.random() * 8));
       setRateLimits((v) => v + (Math.random() > 0.95 ? 1 : 0));
-
-      // Add a simulated chart point
       const now = nowTime();
       setChartData((prev) => {
         const point: ChartPoint = {
-          time:          now,
-          requests:      4800 + Math.floor(Math.random() * 200),
-          errors:        Math.floor(Math.random() * 10),
-          latency:       140 + Math.floor(Math.random() * 40),
+          time: now,
+          requests: 4800 + Math.floor(Math.random() * 200),
+          errors: Math.floor(Math.random() * 10),
+          latency: 140 + Math.floor(Math.random() * 40),
           rateLimitHits: Math.floor(Math.random() * 3),
         };
         return [...prev.slice(-29), point];
       });
-
       pushLog({ time: nowTime(), level: "RECV", message: "Metric heartbeat received from worker-node-04" });
     }, 3000);
-
     return () => clearInterval(id);
   }, [connected, pushLog]);
 
-  // ─── Error rate icon logic ─────────────────────────────────────────────────
   const errorOk = errorRate < 5.0;
+
+  const btnBase: React.CSSProperties = {
+    borderRadius: 8,
+    padding: "10px 18px",
+    fontSize: 12,
+    fontWeight: 600,
+    fontFamily: "'Space Grotesk', sans-serif",
+    letterSpacing: "0.05em",
+    whiteSpace: "nowrap",
+    transition: "all 0.2s",
+    cursor: "pointer",
+    border: "none",
+  };
 
   return (
     <div className="space-y-8">
+
+      {/* Demo Control Panel */}
+      <div className="bg-[#1c1b1c] border border-[#3a393a] hover:border-primary transition-all p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-[11px] font-bold uppercase tracking-widest text-on-surface">
+              Demo Controls
+            </h3>
+            <p className="text-[11px] text-on-surface-variant mt-1 font-mono">
+              {firing
+                ? `[ firing ${firedCount}/${totalToFire} requests... ]`
+                : gatewayStatus === "awake"
+                ? "[ gateway online — ready to fire ]"
+                : "[ wake gateway before firing requests ]"}
+            </p>
+          </div>
+          {/* Status indicator */}
+          <div className="flex items-center gap-2">
+            <div className={`w-1.5 h-1.5 rounded-full ${
+              gatewayStatus === "awake" ? "bg-primary" :
+              gatewayStatus === "sleeping" ? "bg-error" : "bg-outline"
+            }`} />
+            <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant">
+              {gatewayStatus === "awake" ? "Online" : gatewayStatus === "sleeping" ? "Offline" : "Unknown"}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          {/* Wake button */}
+          <button
+            onClick={wakeGateway}
+            disabled={waking || firing}
+            className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wider border transition-all ${
+              gatewayStatus === "awake"
+                ? "border-primary text-primary bg-primary-container"
+                : "border-outline text-on-surface-variant hover:border-primary hover:text-primary"
+            } ${waking || firing ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
+          >
+            {waking ? "CHECKING..." : gatewayStatus === "awake" ? "✓ GATEWAY AWAKE" : "⟳ WAKE GATEWAY"}
+          </button>
+
+          {/* Fire 20 requests */}
+          <button
+            onClick={() => fireRequests(20)}
+            disabled={firing || gatewayStatus !== "awake"}
+            className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wider border transition-all ${
+              firing || gatewayStatus !== "awake"
+                ? "border-outline-variant text-on-surface-variant opacity-40 cursor-not-allowed"
+                : "border-primary bg-primary text-on-primary hover:bg-secondary cursor-pointer"
+            }`}
+          >
+            {firing && totalToFire === 20 ? `FIRING ${firedCount}/20...` : "⚡ FIRE 20 REQUESTS"}
+          </button>
+
+          {/* Trigger rate limit */}
+          <button
+            onClick={() => fireRequests(105)}
+            disabled={firing || gatewayStatus !== "awake"}
+            className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wider border transition-all ${
+              firing || gatewayStatus !== "awake"
+                ? "border-outline-variant text-on-surface-variant opacity-40 cursor-not-allowed"
+                : "border-error text-error hover:bg-error-container cursor-pointer"
+            }`}
+          >
+            {firing && totalToFire === 105 ? `RATE LIMITING ${firedCount}/105...` : "⚠ TRIGGER RATE LIMIT"}
+          </button>
+        </div>
+      </div>
+
       {/* Connection / tenant bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-surface-container-lowest border border-outline-variant p-4">
         <div className="flex items-center gap-8">
