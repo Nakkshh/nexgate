@@ -101,7 +101,6 @@ export default function DashboardPage() {
       try {
         await fetch(`${GATEWAY_URL}/api/todos`, {
           headers: { "X-API-Key": "nxg_free_test_key_001" },
-          mode: "no-cors",
         });
       } catch {}
       setFiredCount(i + 1);
