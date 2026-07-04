@@ -1,0 +1,36 @@
+/* app/globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Custom scrollbar */
+  ::-webkit-scrollbar        { width: 4px; }
+  ::-webkit-scrollbar-track  { background: #0e0e0f; }
+  ::-webkit-scrollbar-thumb  { background: #3a393a; border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: #10b981; }
+
+  ::selection {
+    background-color: #064e3b;
+    color: #d1fae5;
+  }
+}
+
+@layer utilities {
+  /* Live dot ping */
+  @keyframes ping-dot {
+    75%, 100% { transform: scale(2); opacity: 0; }
+  }
+  .animate-ping-dot {
+    animation: ping-dot 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+
+  /* Metric value flicker on update */
+  @keyframes flicker-update {
+    0%   { color: #10b981; }
+    100% { color: inherit; }
+  }
+  .animate-flicker {
+    animation: flicker-update 0.3s ease-out;
+  }
+}
