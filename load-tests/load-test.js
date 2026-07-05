@@ -61,7 +61,7 @@ export const options = {
   },
 };
 
-const BASE = "http://localhost:8080";
+const BASE = __ENV.BASE_URL || "http://localhost:8080";
 
 const HEADERS = {
   free:       { "X-API-Key": "nxg_free_test_key_001"  },
